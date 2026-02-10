@@ -24,6 +24,7 @@
 package interop
 
 import (
+    "bytes"
 	"context"
 	"fmt"
 	"io"
@@ -972,6 +973,87 @@ func DoORCAOOBTest(ctx context.Context, tc testgrpc.TestServiceClient) {
 		Utilization:    map[string]float64{"util": 0.2039},
 	}
 	checkORCAMetrics(ctx, tc, want)
+}
+
+// DoMcsConnectionScalingTest tests connection scaling when max concurrent streams has been reached for a subchannel
+func DoMcsConnectionScalingTest(ctx context.Context, tc testgrpc.TestServiceClient, args ...grpc.CallOption) {
+	stream1, err := tc.FullDuplexCall(ctx, args...)
+	if err != nil {
+		logger.Fatalf("%v.FullDuplexCall(_) = _, %v", tc, err)
+	}
+	pl := &testpb.Payload{
+	    Body: []byte("max concurrent streaming connection scaling"),
+	}
+    req := &testpb.StreamingOutputCallRequest{
+		Payload:            pl,
+	}
+	if err := stream1.Send(req); err != nil {
+		logger.Fatalf("%v has error %v while sending %v", stream1, err, req)
+	}
+	reply, err := stream1.Recv()
+	if err != nil {
+		logger.Fatalf("%v.Recv() = %v", stream1, err)
+	}
+	clientSocketAddressInCall1 := reply.GetPayload().GetBody()
+	if (len(clientSocketAddressInCall1) == 0) {
+	    logger.Fatalf("Got empty payload response for call1.")
+	}
+	
+    stream2, err := tc.FullDuplexCall(ctx, args...)
+	if err != nil {
+		logger.Fatalf("%v.FullDuplexCall(_) = _, %v", tc, err)
+	}
+	if err := stream2.Send(req); err != nil {
+		logger.Fatalf("%v has error %v while sending %v", stream2, err, req)
+	}
+	reply, err = stream2.Recv()
+	if err != nil {
+		logger.Fatalf("%v.Recv() = %v", stream2, err)
+	}
+	clientSocketAddressInCall2 := reply.GetPayload().GetBody()
+	
+	if (!bytes.Equal(clientSocketAddressInCall1, clientSocketAddressInCall2)) {
+	    logger.Fatalf("Expected connection to be reused for both calls. local address1: %s, local address2: %s",
+	        clientSocketAddressInCall1, clientSocketAddressInCall2)
+	}
+	
+	
+    stream3, err := tc.FullDuplexCall(ctx, args...)
+	if err != nil {
+		logger.Fatalf("%v.FullDuplexCall(_) = _, %v", tc, err)
+	}
+	if err := stream3.Send(req); err != nil {
+		logger.Fatalf("%v has error %v while sending %v", stream3, err, req)
+	}
+	reply, err = stream3.Recv()
+	if err != nil {
+		logger.Fatalf("%v.Recv() = %v", stream3, err)
+	}
+	clientSocketAddressInCall3 := reply.GetPayload().GetBody()
+	
+	if (bytes.Equal(clientSocketAddressInCall1, clientSocketAddressInCall3)) {
+	    logger.Fatalf("Expected a new connection to be used for the 3rd call. local address1: %s, local address3: %s",
+	        clientSocketAddressInCall1, clientSocketAddressInCall3)
+	}
+		
+	if err := stream1.CloseSend(); err != nil {
+		logger.Fatalf("%v.CloseSend() got %v, want %v", stream1, err, nil)
+	}
+	if _, err := stream1.Recv(); err != io.EOF {
+		logger.Fatalf("%v failed to complete the MCS connection scaling test: %v", stream1, err)
+	}
+	if err := stream2.CloseSend(); err != nil {
+		logger.Fatalf("%v.CloseSend() got %v, want %v", stream2, err, nil)
+	}
+	if _, err := stream2.Recv(); err != io.EOF {
+		logger.Fatalf("%v failed to complete the MCS connection scaling test: %v", stream2, err)
+	}
+	if err := stream3.CloseSend(); err != nil {
+		logger.Fatalf("%v.CloseSend() got %v, want %v", stream3, err, nil)
+	}
+	if _, err := stream3.Recv(); err != io.EOF {
+		logger.Fatalf("%v failed to complete the MCS connection scaling test: %v", stream3, err)
+	}	
 }
 
 func checkORCAMetrics(ctx context.Context, tc testgrpc.TestServiceClient, want *v3orcapb.OrcaLoadReport) {

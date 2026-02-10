@@ -109,7 +109,8 @@ var (
         unimplemented_service: client attempts to call unimplemented service;
         pick_first_unary: all requests are sent to one server despite multiple servers are resolved;
         orca_per_rpc: the client verifies ORCA per-RPC metrics are provided;
-        orca_oob: the client verifies ORCA out-of-band metrics are provided.`)
+        orca_oob: the client verifies ORCA out-of-band metrics are provided.
+        mcs_cs: Max concurrent streams connection scaling`)
 
 	logger = grpclog.Component("interop")
 )
@@ -402,6 +403,9 @@ func main() {
 	case "orca_oob":
 		interop.DoORCAOOBTest(ctx, tc)
 		logger.Infoln("ORCAOOB done")
+	case "mcs_cs":
+		interop.DoMcsConnectionScalingTest(ctx, tc)
+		logger.Infoln("MCS connection scaling done")
 	default:
 		logger.Fatal("Unsupported test case: ", *testCase)
 	}

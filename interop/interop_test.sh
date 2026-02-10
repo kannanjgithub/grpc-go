@@ -74,6 +74,8 @@ withTimeout () {
 #  "oauth2_auth_token"
 #  "per_rpc_creds"
 #  "pick_first_unary"
+# MCS connection scaling test ("mcs_cs") needs to be run against Java interop server, so it is not
+# listed below
 
 CASES=(
   "empty_unary"
